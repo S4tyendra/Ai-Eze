@@ -17,6 +17,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
+import androidx.compose.material.icons.automirrored.filled.Send
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,7 +120,7 @@ fun TextProcessingBottomSheet(
                     )
 
                     ActionTile(
-                        icon = Icons.Default.Send,
+                        icon = Icons.AutoMirrored.Filled.Send,
                         title = "Suggest Reply",
                         description = "Generate response",
                         onClick = {
