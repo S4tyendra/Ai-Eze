@@ -1,11 +1,8 @@
 package `in`.devh.ai_ze
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.Business
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.SentimentSatisfied
-import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.automirrored.filled.FormatTextdirectionLToR
+import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.vector.ImageVector
 
 data class ActionCategory(
@@ -17,24 +14,24 @@ data class ActionCategory(
 fun getActionCategories(): List<ActionCategory> {
     return listOf(
         ActionCategory(
-            "Quick Actions",
-            Icons.Default.Refresh,
-            PromptTemplate.getCommonActions()
+            name = "Common Actions",
+            icon = Icons.Default.AutoFixHigh,
+            templates = PromptTemplate.getCommonActions()
         ),
         ActionCategory(
-            "Change tone",
-            Icons.Default.SentimentSatisfied,
-            PromptTemplate.getToneActions()
+            name = "Change Tone",
+            icon = Icons.Default.RecordVoiceOver,
+            templates = PromptTemplate.getToneActions()
         ),
         ActionCategory(
-            "Format text",
-            Icons.AutoMirrored.Filled.FormatListBulleted,
-            PromptTemplate.getFormattingActions()
+            name = "Format",
+            icon = Icons.AutoMirrored.Filled.FormatTextdirectionLToR,
+            templates = PromptTemplate.getFormattingActions()
         ),
         ActionCategory(
-            "Translation",
-            Icons.Default.Translate,
-            PromptTemplate.getTranslationActions()
+            name = "Translate",
+            icon = Icons.Default.Translate,
+            templates = PromptTemplate.getTranslationActions()
         )
     )
 }
