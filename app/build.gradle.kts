@@ -67,6 +67,7 @@ dependencies {
     implementation(libs.androidx.material.icons.extended) // ADDED: For extended Material icons
     implementation(libs.icons.lucide) // Keep this if you use Lucide icons
     implementation(libs.androidx.material3.adaptive.navigation.suite)
+    implementation(libs.androidx.security.crypto.ktx) // ADDED: For encrypted shared preferences
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -74,4 +75,6 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
 }
