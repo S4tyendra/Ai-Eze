@@ -7,10 +7,8 @@ import android.content.ContextWrapper
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,15 +22,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
@@ -56,28 +49,10 @@ fun TextProcessingBottomSheet(
     var processedText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var selectedTemplate by remember { mutableStateOf<PromptTemplate?>(null) }
+    var isProcessing by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val categories = remember { getActionCategories() }
-
-    // Material 3 expressive animations
-    val stateTransition = updateTransition(currentState, label = "state")
-
-    val slideAnimation by stateTransition.animateFloat(
-        transitionSpec = {
-            spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
-            )
-        },
-        label = "slide"
-    ) { state ->
-        when (state) {
-            BottomSheetState.ACTION_SELECTION -> 0f
-            BottomSheetState.PROCESSING -> -1f
-            BottomSheetState.RESULT -> -2f
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -112,8 +87,7 @@ fun TextProcessingBottomSheet(
                     ),
                     initialOffsetX = { fullWidth ->
                         when (targetState) {
-                            BottomSheetState.PROCESSING -> fullWidth
-                            BottomSheetState.RESULT -> fullWidth
+                            BottomSheetState.PROCESSING, BottomSheetState.RESULT -> fullWidth
                             else -> -fullWidth
                         }
                     }
@@ -125,7 +99,6 @@ fun TextProcessingBottomSheet(
                     targetOffsetX = { fullWidth ->
                         when (initialState) {
                             BottomSheetState.ACTION_SELECTION -> -fullWidth
-                            BottomSheetState.PROCESSING -> -fullWidth
                             else -> fullWidth
                         }
                     }
@@ -143,6 +116,7 @@ fun TextProcessingBottomSheet(
                         onBackPressed = { selectedCategory = null },
                         onActionSelected = { template ->
                             selectedTemplate = template
+                            isProcessing = true
                             currentState = BottomSheetState.PROCESSING
                             handleAction(
                                 template = template,
@@ -150,9 +124,13 @@ fun TextProcessingBottomSheet(
                                 apiKeyManager = apiKeyManager,
                                 context = context,
                                 onTextUpdate = { processedText = it },
-                                onComplete = { currentState = BottomSheetState.RESULT },
+                                onComplete = {
+                                    isProcessing = false
+                                    currentState = BottomSheetState.RESULT
+                                },
                                 onError = { error ->
                                     errorMessage = error
+                                    isProcessing = false
                                     currentState = BottomSheetState.RESULT
                                 }
                             )
@@ -160,65 +138,53 @@ fun TextProcessingBottomSheet(
                     )
                 }
 
-                BottomSheetState.PROCESSING -> {
+                BottomSheetState.PROCESSING, BottomSheetState.RESULT -> {
                     MorphingTextContent(
                         originalText = selectedText,
                         processedText = processedText,
-                        isProcessing = true
-                    )
-                }
-
-                BottomSheetState.RESULT -> {
-                    Column {
-                        MorphingTextContent(
-                            originalText = selectedText,
-                            processedText = processedText,
+                        isProcessing = isProcessing,
+                        errorMessage = errorMessage,
+                        onBackToMain = {
+                            currentState = BottomSheetState.ACTION_SELECTION
+                            selectedCategory = null
+                            processedText = ""
+                            errorMessage = null
+                            selectedTemplate = null
                             isProcessing = false
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        BottomButtonGroup(
-                            errorMessage = errorMessage,
-                            onBackToMain = {
-                                currentState = BottomSheetState.ACTION_SELECTION
-                                selectedCategory = null
+                        },
+                        onRetry = {
+                            if (selectedTemplate != null) {
                                 processedText = ""
                                 errorMessage = null
-                                selectedTemplate = null
-                            },
-                            onRetry = {
-                                if (selectedTemplate != null) {
-                                    processedText = ""
-                                    errorMessage = null
-                                    currentState = BottomSheetState.PROCESSING
-                                    handleAction(
-                                        template = selectedTemplate!!,
-                                        selectedText = selectedText,
-                                        apiKeyManager = apiKeyManager,
-                                        context = context,
-                                        onTextUpdate = { processedText = it },
-                                        onComplete = { currentState = BottomSheetState.RESULT },
-                                        onError = { error ->
-                                            errorMessage = error
-                                            currentState = BottomSheetState.RESULT
-                                        }
-                                    )
-                                }
-                            },
-                            onCopy = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("AI Result", processedText)
-                                clipboard.setPrimaryClip(clip)
-                            },
-                            onReplace = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("AI Result", processedText)
-                                clipboard.setPrimaryClip(clip)
-                                onDismiss()
+                                isProcessing = true
+                                handleAction(
+                                    template = selectedTemplate!!,
+                                    selectedText = selectedText,
+                                    apiKeyManager = apiKeyManager,
+                                    context = context,
+                                    onTextUpdate = { processedText = it },
+                                    onComplete = {
+                                        isProcessing = false
+                                    },
+                                    onError = { error ->
+                                        errorMessage = error
+                                        isProcessing = false
+                                    }
+                                )
                             }
-                        )
-                    }
+                        },
+                        onCopy = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("AI Result", processedText)
+                            clipboard.setPrimaryClip(clip)
+                        },
+                        onReplace = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("AI Result", processedText)
+                            clipboard.setPrimaryClip(clip)
+                            onDismiss()
+                        }
+                    )
                 }
             }
         }
@@ -532,27 +498,23 @@ private fun AnimatedActionButton(
 private fun MorphingTextContent(
     originalText: String,
     processedText: String,
-    isProcessing: Boolean
+    isProcessing: Boolean,
+    errorMessage: String?,
+    onBackToMain: () -> Unit,
+    onRetry: () -> Unit,
+    onCopy: () -> Unit,
+    onReplace: () -> Unit
 ) {
     var displayText by remember { mutableStateOf(originalText) }
     var morphProgress by remember { mutableFloatStateOf(0f) }
 
-    // Animate morphing progress
-    val animatedProgress by animateFloatAsState(
-        targetValue = if (processedText.isNotEmpty()) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessVeryLow
-        ),
-        label = "morph_progress"
-    )
-
-    // Text morphing effect
+    // Text morphing effect - smooth transition from original to processed text
     LaunchedEffect(processedText, originalText) {
         if (processedText.isNotEmpty()) {
-            val originalWords = originalText.split(" ")
-            val processedWords = processedText.split(" ")
-            val maxLength = maxOf(originalWords.size, processedWords.size)
+            // Split into characters for smoother morphing
+            val originalChars = originalText.toCharArray()
+            val processedChars = processedText.toCharArray()
+            val maxLength = maxOf(originalChars.size, processedChars.size)
 
             for (i in 0..maxLength) {
                 val progress = i.toFloat() / maxLength
@@ -562,27 +524,21 @@ private fun MorphingTextContent(
                     for (j in 0 until maxLength) {
                         when {
                             j < i -> {
-                                // Already morphed - show new text
-                                if (j < processedWords.size) {
-                                    append(processedWords[j])
-                                    if (j < maxLength - 1) append(" ")
+                                // Already morphed - show new character
+                                if (j < processedChars.size) {
+                                    append(processedChars[j])
                                 }
                             }
                             j == i -> {
-                                // Currently morphing - blend between old and new
-                                val oldWord = if (j < originalWords.size) originalWords[j] else ""
-                                val newWord = if (j < processedWords.size) processedWords[j] else ""
-
-                                if (newWord.isNotEmpty()) {
-                                    append(newWord)
-                                    if (j < maxLength - 1) append(" ")
+                                // Currently morphing - show new character
+                                if (j < processedChars.size) {
+                                    append(processedChars[j])
                                 }
                             }
                             else -> {
-                                // Not yet morphed - show original
-                                if (j < originalWords.size) {
-                                    append(originalWords[j])
-                                    if (j < maxLength - 1) append(" ")
+                                // Not yet morphed - show original character
+                                if (j < originalChars.size) {
+                                    append(originalChars[j])
                                 }
                             }
                         }
@@ -590,7 +546,7 @@ private fun MorphingTextContent(
                 }
 
                 displayText = morphedText
-                delay(150) // Smooth morphing delay
+                delay(3)
             }
         } else {
             displayText = originalText
@@ -598,63 +554,216 @@ private fun MorphingTextContent(
         }
     }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium
-                )
-            ),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isProcessing) 8.dp else 2.dp
-        )
+    Column(
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
-            modifier = Modifier.padding(20.dp)
+        // Main text card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                ),
+            colors = CardDefaults.cardColors(
+                containerColor = when {
+                    errorMessage != null -> MaterialTheme.colorScheme.errorContainer
+                    isProcessing -> MaterialTheme.colorScheme.primaryContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = if (isProcessing) 8.dp else 2.dp
+            ),
+            shape = RoundedCornerShape(20.dp)
         ) {
-            Column {
-                // Processing indicator
-                if (isProcessing) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "AI is transforming your text...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                        )
+            Column(
+                modifier = Modifier.padding(20.dp)
+            ) {
+                // Status indicator
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    when {
+                        isProcessing -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "AI is transforming your text...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                        errorMessage != null -> {
+                            Icon(
+                                Icons.Default.Error,
+                                contentDescription = "Error",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Error occurred",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        else -> {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = "Complete",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Transformation complete",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
                 // Morphing text with blur effect during transition
                 val blurAmount by animateFloatAsState(
-                    targetValue = if (morphProgress > 0f && morphProgress < 1f) 2f else 0f,
-                    animationSpec = tween(200),
+                    targetValue = if (isProcessing && morphProgress > 0f && morphProgress < 1f) 3f else 0f,
+                    animationSpec = tween(300),
                     label = "blur"
                 )
 
                 Text(
-                    text = displayText,
+                    text = if (errorMessage != null) errorMessage else displayText,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = when {
+                        errorMessage != null -> MaterialTheme.colorScheme.onErrorContainer
+                        isProcessing -> MaterialTheme.colorScheme.onPrimaryContainer
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .blur(blurAmount.dp)
                         .heightIn(min = 60.dp, max = 300.dp)
                         .verticalScroll(rememberScrollState())
                 )
+            }
+        }
+
+        // Animated button group that appears when processing is complete
+        AnimatedVisibility(
+            visible = !isProcessing,
+            enter = slideInVertically(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                ),
+                initialOffsetY = { it }
+            ) + fadeIn(),
+            exit = slideOutVertically(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                ),
+                targetOffsetY = { it }
+            ) + fadeOut(),
+            label = "buttons_animation"
+        ) {
+            Column {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Back button
+                        OutlinedButton(
+                            onClick = onBackToMain,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        if (errorMessage != null) {
+                            // Error state - show retry button
+                            Button(
+                                onClick = onRetry,
+                                modifier = Modifier.weight(3f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Retry",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Retry")
+                            }
+                        } else {
+                            // Success state - show retry, copy, replace
+                            OutlinedButton(
+                                onClick = onRetry,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Retry",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = onCopy,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = "Copy",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Button(
+                                onClick = onReplace,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Icon(
+                                    Icons.Default.SwapHoriz,
+                                    contentDescription = "Replace",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
