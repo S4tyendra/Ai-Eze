@@ -15,6 +15,7 @@ ktorClientCio = "3.2.3"
 ktorClientCore = "3.2.3"
 ktor = "3.2.3"
 kotlinxSerialization = "1.9.0"
+foundation = "1.9.0"
 
 
 [libraries]
@@ -44,6 +45,7 @@ ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-conte
 ktor-client-logging = { group = "io.ktor", name = "ktor-client-logging", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+androidx-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 
 
 [plugins]

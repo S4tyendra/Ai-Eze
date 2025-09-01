@@ -3,13 +3,16 @@ package `in`.devh.ai_ze
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -110,12 +113,14 @@ fun TextProcessingBottomSheet(
                     processedText = processedText,
                     errorMessage = errorMessage,
                     onCopyResult = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clipboard =
+                            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText("AI Result", processedText)
                         clipboard.setPrimaryClip(clip)
                     },
                     onReplaceAndFinish = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clipboard =
+                            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText("AI Result", processedText)
                         clipboard.setPrimaryClip(clip)
                         onDismiss()
@@ -176,32 +181,34 @@ private fun ActionSelectionContent(
     if (selectedCategory == null) {
         // Show main categories
         LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth()
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
         ) {
-            items(categories) { category ->
+            itemsIndexed(categories) { index, category ->
                 CategoryButton(
                     category = category,
-                    onClick = { onCategorySelected(category) }
+                    onClick = { onCategorySelected(category) },
+                    index = index,
+                    listSize = categories.size
                 )
             }
-
-            // Bottom padding
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
         }
+
     } else {
         // Show actions for selected category
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            items(selectedCategory.templates) { template ->
+            itemsIndexed(selectedCategory.templates) { index, template ->
                 ActionButton(
                     template = template,
                     icon = getIconForTemplate(template),
-                    onClick = { onActionSelected(template) }
+                    onClick = { onActionSelected(template) },
+                    index = index,
+                    listSize = selectedCategory.templates.size
                 )
             }
 
@@ -425,15 +432,30 @@ private fun ResultContent(
 @Composable
 private fun CategoryButton(
     category: ActionCategory,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    index: Int,
+    listSize: Int
 ) {
+    val cornerRadius = 24.dp
+    val shape = when {
+        listSize == 1 -> RoundedCornerShape(cornerRadius)
+        index == 0 -> RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)
+        index == listSize - 1 -> RoundedCornerShape(
+            bottomStart = cornerRadius,
+            bottomEnd = cornerRadius
+        )
+
+        else -> RoundedCornerShape(0.dp)
+    }
+
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
+        shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
             modifier = Modifier
@@ -444,7 +466,7 @@ private fun CategoryButton(
             Icon(
                 imageVector = category.icon,
                 contentDescription = category.name,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.size(28.dp)
             )
 
@@ -457,19 +479,19 @@ private fun CategoryButton(
                     text = category.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 Text(
                     text = "${category.templates.size} actions",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
                 )
             }
 
             Icon(
                 Icons.Default.ChevronRight,
                 contentDescription = "Open",
-                tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
             )
         }
     }
@@ -479,20 +501,41 @@ private fun CategoryButton(
 private fun ActionButton(
     template: PromptTemplate,
     icon: ImageVector,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    index: Int,
+    listSize: Int
 ) {
+    val cornerRadius = 24.dp
+    val shape = when {
+        listSize == 1 -> RoundedCornerShape(cornerRadius)
+        index == 0 -> RoundedCornerShape(
+            topStart = cornerRadius,
+            topEnd = cornerRadius,
+            bottomStart = 2.dp,
+            bottomEnd = 2.dp
+        )
+
+        index == listSize - 1 -> RoundedCornerShape(
+            bottomStart = cornerRadius, bottomEnd = cornerRadius,
+            topStart = 2.dp,
+            topEnd = 2.dp,
+        )
+
+        else -> RoundedCornerShape(2.dp)
+    }
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = shape
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -529,7 +572,11 @@ private fun handleAction(
     onComplete: () -> Unit,
     onError: (String) -> Unit
 ) {
-    val activity = context as ComponentActivity
+    val activity = findActivity(context)
+    if (activity == null) {
+        onError("Unable to access activity context")
+        return
+    }
 
     activity.lifecycleScope.launch {
         try {
@@ -558,6 +605,18 @@ private fun handleAction(
             onError("Error: ${e.message}")
         }
     }
+}
+
+// Helper function to safely find ComponentActivity from context
+private fun findActivity(context: Context): ComponentActivity? {
+    var currentContext = context
+    while (currentContext is ContextWrapper) {
+        if (currentContext is ComponentActivity) {
+            return currentContext
+        }
+        currentContext = currentContext.baseContext
+    }
+    return null
 }
 
 private fun getIconForTemplate(template: PromptTemplate): ImageVector {
