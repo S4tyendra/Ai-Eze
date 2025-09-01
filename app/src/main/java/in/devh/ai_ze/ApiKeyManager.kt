@@ -1,11 +1,13 @@
 package `in`.devh.ai_ze
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.core.content.edit
 
 class ApiKeyManager private constructor(private val context: Context) {
 
@@ -13,6 +15,7 @@ class ApiKeyManager private constructor(private val context: Context) {
         private const val PREFS_NAME = "ai_ze_secure_prefs"
         private const val GEMINI_API_KEY = "gemini_api_key"
 
+        @SuppressLint("StaticFieldLeak")
         @Volatile
         private var INSTANCE: ApiKeyManager? = null
 
@@ -40,9 +43,9 @@ class ApiKeyManager private constructor(private val context: Context) {
     suspend fun saveGeminiApiKey(apiKey: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                encryptedPrefs.edit()
-                    .putString(GEMINI_API_KEY, apiKey)
-                    .apply()
+                encryptedPrefs.edit {
+                    putString(GEMINI_API_KEY, apiKey)
+                }
                 true
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -69,9 +72,9 @@ class ApiKeyManager private constructor(private val context: Context) {
     suspend fun deleteGeminiApiKey(): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                encryptedPrefs.edit()
-                    .remove(GEMINI_API_KEY)
-                    .apply()
+                encryptedPrefs.edit {
+                    remove(GEMINI_API_KEY)
+                }
                 true
             } catch (e: Exception) {
                 e.printStackTrace()

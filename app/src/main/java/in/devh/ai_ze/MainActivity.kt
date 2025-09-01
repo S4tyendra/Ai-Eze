@@ -194,7 +194,8 @@ fun AiAssistantScreen(modifier: Modifier = Modifier) {
                             if (hasApiKey == true) {
                                 // Demo the text handler with sample text
                                 val demoIntent = Intent(context, TextHandlerActivity::class.java).apply {
-                                    putExtra("selectedText", "This is a sample text for testing the AI features.")
+                                    putExtra("selectedText", "This is a sample text for testing the AI features. You can rephrase this, fix grammar, change tone, or perform other AI actions.")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                                 }
                                 context.startActivity(demoIntent)
                             } else {
