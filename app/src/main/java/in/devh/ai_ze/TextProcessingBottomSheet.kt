@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.*
@@ -21,6 +22,9 @@ fun TextProcessingBottomSheet(
     onActionSelected: (PromptTemplate) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var selectedCategory by remember { mutableStateOf<ActionCategory?>(null) }
+    val categories = remember { getActionCategories() }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -44,100 +48,130 @@ fun TextProcessingBottomSheet(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text(
-            text = "Choose AI Action",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
-        Text(
-            text = "Selected: \"${selectedText.take(50)}${if (selectedText.length > 50) "..." else ""}\"",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
+        // Header with back button for subcategories
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Common Actions
-            item {
+            if (selectedCategory != null) {
+                IconButton(
+                    onClick = { selectedCategory = null }
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back"
+                    )
+                }
+            }
+
+            Text(
+                text = selectedCategory?.name ?: "Choose AI Action",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        if (selectedCategory == null) {
+            Text(
+                text = "Selected: \"${selectedText.take(50)}${if (selectedText.length > 50) "..." else ""}\"",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
+
+        // Main content
+        if (selectedCategory == null) {
+            // Show main categories
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(categories) { category ->
+                    CategoryButton(
+                        category = category,
+                        onClick = { selectedCategory = category }
+                    )
+                }
+
+                // Bottom padding
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+        } else {
+            // Show actions for selected category
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(selectedCategory!!.templates) { template ->
+                    ActionButton(
+                        template = template,
+                        icon = getIconForTemplate(template),
+                        onClick = { onActionSelected(template) }
+                    )
+                }
+
+                // Bottom padding
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryButton(
+    category: ActionCategory,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = category.icon,
+                contentDescription = category.name,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(28.dp)
+            )
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
                 Text(
-                    text = "Quick Actions",
+                    text = category.name,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(vertical = 8.dp)
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
-            }
-
-            items(PromptTemplate.getCommonActions()) { template ->
-                ActionButton(
-                    template = template,
-                    icon = getIconForTemplate(template),
-                    onClick = { onActionSelected(template) }
-                )
-            }
-
-            // Tone Modifications
-            item {
                 Text(
-                    text = "Change Tone",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(vertical = 8.dp)
+                    text = "${category.templates.size} actions",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                 )
             }
 
-            items(PromptTemplate.getToneActions()) { template ->
-                ActionButton(
-                    template = template,
-                    icon = getIconForTemplate(template),
-                    onClick = { onActionSelected(template) }
-                )
-            }
-
-            // Formatting Actions
-            item {
-                Text(
-                    text = "Format Text",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
-
-            items(PromptTemplate.getFormattingActions()) { template ->
-                ActionButton(
-                    template = template,
-                    icon = getIconForTemplate(template),
-                    onClick = { onActionSelected(template) }
-                )
-            }
-
-            // Translation Actions
-            item {
-                Text(
-                    text = "Translation",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
-
-            items(PromptTemplate.getTranslationActions()) { template ->
-                ActionButton(
-                    template = template,
-                    icon = getIconForTemplate(template),
-                    onClick = { onActionSelected(template) }
-                )
-            }
-
-            // Bottom padding
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = "Open",
+                tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+            )
         }
     }
 }
