@@ -7,6 +7,7 @@ import android.content.ContextWrapper
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,11 +24,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
@@ -47,9 +55,29 @@ fun TextProcessingBottomSheet(
     var selectedCategory by remember { mutableStateOf<ActionCategory?>(null) }
     var processedText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var selectedTemplate by remember { mutableStateOf<PromptTemplate?>(null) }
 
     val context = LocalContext.current
     val categories = remember { getActionCategories() }
+
+    // Material 3 expressive animations
+    val stateTransition = updateTransition(currentState, label = "state")
+
+    val slideAnimation by stateTransition.animateFloat(
+        transitionSpec = {
+            spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        },
+        label = "slide"
+    ) { state ->
+        when (state) {
+            BottomSheetState.ACTION_SELECTION -> 0f
+            BottomSheetState.PROCESSING -> -1f
+            BottomSheetState.RESULT -> -2f
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -74,64 +102,124 @@ fun TextProcessingBottomSheet(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        when (currentState) {
-            BottomSheetState.ACTION_SELECTION -> {
-                ActionSelectionContent(
-                    selectedText = selectedText,
-                    selectedCategory = selectedCategory,
-                    categories = categories,
-                    onCategorySelected = { selectedCategory = it },
-                    onBackPressed = { selectedCategory = null },
-                    onActionSelected = { template ->
-                        currentState = BottomSheetState.PROCESSING
-                        handleAction(
-                            template = template,
-                            selectedText = selectedText,
-                            apiKeyManager = apiKeyManager,
-                            context = context,
-                            onTextUpdate = { processedText = it },
-                            onComplete = { currentState = BottomSheetState.RESULT },
-                            onError = { error ->
-                                errorMessage = error
-                                currentState = BottomSheetState.RESULT
+        AnimatedContent(
+            targetState = currentState,
+            transitionSpec = {
+                slideInHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    initialOffsetX = { fullWidth ->
+                        when (targetState) {
+                            BottomSheetState.PROCESSING -> fullWidth
+                            BottomSheetState.RESULT -> fullWidth
+                            else -> -fullWidth
+                        }
+                    }
+                ) togetherWith slideOutHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    targetOffsetX = { fullWidth ->
+                        when (initialState) {
+                            BottomSheetState.ACTION_SELECTION -> -fullWidth
+                            BottomSheetState.PROCESSING -> -fullWidth
+                            else -> fullWidth
+                        }
+                    }
+                )
+            },
+            label = "content_transition"
+        ) { state ->
+            when (state) {
+                BottomSheetState.ACTION_SELECTION -> {
+                    ActionSelectionContent(
+                        selectedText = selectedText,
+                        selectedCategory = selectedCategory,
+                        categories = categories,
+                        onCategorySelected = { selectedCategory = it },
+                        onBackPressed = { selectedCategory = null },
+                        onActionSelected = { template ->
+                            selectedTemplate = template
+                            currentState = BottomSheetState.PROCESSING
+                            handleAction(
+                                template = template,
+                                selectedText = selectedText,
+                                apiKeyManager = apiKeyManager,
+                                context = context,
+                                onTextUpdate = { processedText = it },
+                                onComplete = { currentState = BottomSheetState.RESULT },
+                                onError = { error ->
+                                    errorMessage = error
+                                    currentState = BottomSheetState.RESULT
+                                }
+                            )
+                        }
+                    )
+                }
+
+                BottomSheetState.PROCESSING -> {
+                    MorphingTextContent(
+                        originalText = selectedText,
+                        processedText = processedText,
+                        isProcessing = true
+                    )
+                }
+
+                BottomSheetState.RESULT -> {
+                    Column {
+                        MorphingTextContent(
+                            originalText = selectedText,
+                            processedText = processedText,
+                            isProcessing = false
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        BottomButtonGroup(
+                            errorMessage = errorMessage,
+                            onBackToMain = {
+                                currentState = BottomSheetState.ACTION_SELECTION
+                                selectedCategory = null
+                                processedText = ""
+                                errorMessage = null
+                                selectedTemplate = null
+                            },
+                            onRetry = {
+                                if (selectedTemplate != null) {
+                                    processedText = ""
+                                    errorMessage = null
+                                    currentState = BottomSheetState.PROCESSING
+                                    handleAction(
+                                        template = selectedTemplate!!,
+                                        selectedText = selectedText,
+                                        apiKeyManager = apiKeyManager,
+                                        context = context,
+                                        onTextUpdate = { processedText = it },
+                                        onComplete = { currentState = BottomSheetState.RESULT },
+                                        onError = { error ->
+                                            errorMessage = error
+                                            currentState = BottomSheetState.RESULT
+                                        }
+                                    )
+                                }
+                            },
+                            onCopy = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("AI Result", processedText)
+                                clipboard.setPrimaryClip(clip)
+                            },
+                            onReplace = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("AI Result", processedText)
+                                clipboard.setPrimaryClip(clip)
+                                onDismiss()
                             }
                         )
                     }
-                )
-            }
-
-            BottomSheetState.PROCESSING -> {
-                ProcessingContent(
-                    selectedText = selectedText,
-                    processedText = processedText
-                )
-            }
-
-            BottomSheetState.RESULT -> {
-                ResultContent(
-                    selectedText = selectedText,
-                    processedText = processedText,
-                    errorMessage = errorMessage,
-                    onCopyResult = {
-                        val clipboard =
-                            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("AI Result", processedText)
-                        clipboard.setPrimaryClip(clip)
-                    },
-                    onReplaceAndFinish = {
-                        val clipboard =
-                            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("AI Result", processedText)
-                        clipboard.setPrimaryClip(clip)
-                        onDismiss()
-                    },
-                    onTryAgain = {
-                        currentState = BottomSheetState.ACTION_SELECTION
-                        selectedCategory = null
-                        processedText = ""
-                        errorMessage = null
-                    }
-                )
+                }
             }
         }
     }
@@ -146,286 +234,525 @@ private fun ActionSelectionContent(
     onBackPressed: () -> Unit,
     onActionSelected: (PromptTemplate) -> Unit
 ) {
-    // Header with back button for subcategories
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+    Column(
+        modifier = Modifier.fillMaxWidth()
     ) {
-        if (selectedCategory != null) {
-            IconButton(onClick = onBackPressed) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back"
+        // Header with back button for subcategories
+        AnimatedContent(
+            targetState = selectedCategory != null,
+            transitionSpec = {
+                slideInHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                ) togetherWith slideOutHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
                 )
+            },
+            label = "header_transition"
+        ) { hasCategory ->
+            if (hasCategory && selectedCategory != null) {
+                // Category header with back button
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBackPressed) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Text(
+                        text = selectedCategory.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            } else {
+                // Main header
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp)
+                ) {
+                    Text(
+                        text = "Choose AI Action",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = "\"${selectedText.take(80)}${if (selectedText.length > 80) "..." else ""}\"",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
             }
         }
 
-        Text(
-            text = selectedCategory?.name ?: "Choose AI Action",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f)
-        )
-    }
-
-    if (selectedCategory == null) {
-        Text(
-            text = "Selected: \"${selectedText.take(50)}${if (selectedText.length > 50) "..." else ""}\"",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-    }
-
-    // Main content
-    if (selectedCategory == null) {
-        // Show main categories
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(1.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-        ) {
-            itemsIndexed(categories) { index, category ->
-                CategoryButton(
-                    category = category,
-                    onClick = { onCategorySelected(category) },
-                    index = index,
-                    listSize = categories.size
-                )
-            }
-        }
-
-    } else {
-        // Show actions for selected category
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            itemsIndexed(selectedCategory.templates) { index, template ->
-                ActionButton(
-                    template = template,
-                    icon = getIconForTemplate(template),
-                    onClick = { onActionSelected(template) },
-                    index = index,
-                    listSize = selectedCategory.templates.size
-                )
-            }
-
-            // Bottom padding
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
+        // Main content with proper spacing
+        AnimatedContent(
+            targetState = selectedCategory == null,
+            transitionSpec = {
+                slideInHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    ),
+                    initialOffsetX = { if (targetState) -it else it }
+                ) + fadeIn() togetherWith
+                slideOutHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    ),
+                    targetOffsetX = { if (initialState) it else -it }
+                ) + fadeOut()
+            },
+            label = "content_transition"
+        ) { isMainCategory ->
+            if (isMainCategory) {
+                // Show main categories
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    itemsIndexed(categories) { index, category ->
+                        AnimatedCategoryButton(
+                            category = category,
+                            onClick = { onCategorySelected(category) },
+                            index = index,
+                            animationDelay = index * 50L
+                        )
+                    }
+                }
+            } else if (selectedCategory != null) {
+                // Show actions for selected category
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    itemsIndexed(selectedCategory.templates) { index, template ->
+                        AnimatedActionButton(
+                            template = template,
+                            icon = getIconForTemplate(template),
+                            onClick = { onActionSelected(template) },
+                            index = index,
+                            animationDelay = index * 80L
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ProcessingContent(
-    selectedText: String,
-    processedText: String
+private fun AnimatedCategoryButton(
+    category: ActionCategory,
+    onClick: () -> Unit,
+    index: Int,
+    animationDelay: Long
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
+    var visible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        delay(animationDelay)
+        visible = true
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically(
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium
+            ),
+            initialOffsetY = { it / 2 }
+        ) + fadeIn(),
+        label = "category_enter"
     ) {
-        Text(
-            text = "Processing...",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        // Original Text Card
         Card(
+            onClick = onClick,
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(20.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Original Text",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                Icon(
+                    imageVector = category.icon,
+                    contentDescription = category.name,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
                 )
-                Text(
-                    text = selectedText,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.width(16.dp))
 
-        // Processing Result Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                Column(
+                    modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = "AI Result",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = category.name,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
+                    Text(
+                        text = "${category.templates.size} actions available",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
                     )
                 }
 
-                Text(
-                    text = if (processedText.isEmpty()) "Processing..." else processedText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 40.dp, max = 200.dp)
-                        .verticalScroll(rememberScrollState())
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = "Open",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f),
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
 @Composable
-private fun ResultContent(
-    selectedText: String,
-    processedText: String,
-    errorMessage: String?,
-    onCopyResult: () -> Unit,
-    onReplaceAndFinish: () -> Unit,
-    onTryAgain: () -> Unit
+private fun AnimatedActionButton(
+    template: PromptTemplate,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    index: Int,
+    animationDelay: Long
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = if (errorMessage != null) "Error" else "Result",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+    var visible by remember { mutableStateOf(false) }
 
-        // Original Text Card
+    LaunchedEffect(Unit) {
+        delay(animationDelay)
+        visible = true
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically(
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium
+            ),
+            initialOffsetY = { it / 3 }
+        ) + fadeIn() + scaleIn(initialScale = 0.8f),
+        label = "action_enter"
+    ) {
         Card(
+            onClick = onClick,
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            shape = RoundedCornerShape(16.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Original Text",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                Text(
-                    text = selectedText,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Surface(
+                    modifier = Modifier.size(40.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = template.displayName,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = template.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Text(
+                        text = getDescriptionForTemplate(template),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(16.dp))
+@Composable
+private fun MorphingTextContent(
+    originalText: String,
+    processedText: String,
+    isProcessing: Boolean
+) {
+    var displayText by remember { mutableStateOf(originalText) }
+    var morphProgress by remember { mutableFloatStateOf(0f) }
 
-        // Result Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = if (errorMessage != null)
-                    MaterialTheme.colorScheme.errorContainer
-                else
-                    MaterialTheme.colorScheme.primaryContainer
-            )
+    // Animate morphing progress
+    val animatedProgress by animateFloatAsState(
+        targetValue = if (processedText.isNotEmpty()) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessVeryLow
+        ),
+        label = "morph_progress"
+    )
+
+    // Text morphing effect
+    LaunchedEffect(processedText, originalText) {
+        if (processedText.isNotEmpty()) {
+            val originalWords = originalText.split(" ")
+            val processedWords = processedText.split(" ")
+            val maxLength = maxOf(originalWords.size, processedWords.size)
+
+            for (i in 0..maxLength) {
+                val progress = i.toFloat() / maxLength
+                morphProgress = progress
+
+                val morphedText = buildString {
+                    for (j in 0 until maxLength) {
+                        when {
+                            j < i -> {
+                                // Already morphed - show new text
+                                if (j < processedWords.size) {
+                                    append(processedWords[j])
+                                    if (j < maxLength - 1) append(" ")
+                                }
+                            }
+                            j == i -> {
+                                // Currently morphing - blend between old and new
+                                val oldWord = if (j < originalWords.size) originalWords[j] else ""
+                                val newWord = if (j < processedWords.size) processedWords[j] else ""
+
+                                if (newWord.isNotEmpty()) {
+                                    append(newWord)
+                                    if (j < maxLength - 1) append(" ")
+                                }
+                            }
+                            else -> {
+                                // Not yet morphed - show original
+                                if (j < originalWords.size) {
+                                    append(originalWords[j])
+                                    if (j < maxLength - 1) append(" ")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                displayText = morphedText
+                delay(150) // Smooth morphing delay
+            }
+        } else {
+            displayText = originalText
+            morphProgress = 0f
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isProcessing) 8.dp else 2.dp
+        )
+    ) {
+        Box(
+            modifier = Modifier.padding(20.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = if (errorMessage != null) "Error" else "AI Result",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
+            Column {
+                // Processing indicator
+                if (isProcessing) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "AI is transforming your text...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+
+                // Morphing text with blur effect during transition
+                val blurAmount by animateFloatAsState(
+                    targetValue = if (morphProgress > 0f && morphProgress < 1f) 2f else 0f,
+                    animationSpec = tween(200),
+                    label = "blur"
                 )
 
                 Text(
-                    text = errorMessage ?: processedText,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = displayText,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 40.dp, max = 200.dp)
+                        .blur(blurAmount.dp)
+                        .heightIn(min = 60.dp, max = 300.dp)
                         .verticalScroll(rememberScrollState())
                 )
             }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Action Buttons
-        if (errorMessage != null) {
-            Button(
-                onClick = onTryAgain,
-                modifier = Modifier.fillMaxWidth()
+@Composable
+private fun BottomButtonGroup(
+    errorMessage: String?,
+    onBackToMain: () -> Unit,
+    onRetry: () -> Unit,
+    onCopy: () -> Unit,
+    onReplace: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Back button
+            OutlinedButton(
+                onClick = onBackToMain,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
             ) {
                 Icon(
-                    Icons.Default.Refresh,
-                    contentDescription = "Try Again",
-                    modifier = Modifier.size(18.dp)
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    modifier = Modifier.size(16.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Try Again")
             }
-        } else if (processedText.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+
+            if (errorMessage != null) {
+                // Error state - show retry button
+                Button(
+                    onClick = onRetry,
+                    modifier = Modifier.weight(3f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Retry",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Retry")
+                }
+            } else {
+                // Success state - show retry, copy, replace
                 OutlinedButton(
-                    onClick = onCopyResult,
+                    onClick = onRetry,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Retry",
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onCopy,
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         Icons.Default.ContentCopy,
                         contentDescription = "Copy",
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Copy")
                 }
 
                 Button(
-                    onClick = onReplaceAndFinish,
-                    modifier = Modifier.weight(1f)
+                    onClick = onReplace,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
                 ) {
                     Icon(
                         Icons.Default.SwapHoriz,
                         contentDescription = "Replace",
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Replace")
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
