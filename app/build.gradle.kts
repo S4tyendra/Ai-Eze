@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+kotlin {
+    jvmToolchain(11)
+}
+
 android {
     namespace = "in.devh.ai_ze"
     compileSdk = 36
@@ -42,9 +46,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
-    }
+    // kotlinOptions block removed
     buildFeatures {
         compose = true
     }
@@ -59,8 +61,12 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
-    implementation(libs.material3)
+    implementation(libs.androidx.material3) // Correct: uses the alias defined with the version
+    // implementation(libs.material3) // REMOVED: This was redundant
+    implementation(libs.androidx.material.icons.core) // ADDED: For Material icons
+    implementation(libs.androidx.material.icons.extended) // ADDED: For extended Material icons
+    implementation(libs.icons.lucide) // Keep this if you use Lucide icons
+    implementation(libs.androidx.material3.adaptive.navigation.suite)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
